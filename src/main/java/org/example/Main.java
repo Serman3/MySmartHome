@@ -1,15 +1,18 @@
 package org.example;
 
+import org.example.converter.CRC8;
+import org.example.struct.Device;
+import org.example.struct.Packet;
+import org.example.struct.Payload;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 public class Main {
-    private static final String SERVER_URL = "http://localhost:9998"; // URL сервера моделирующего устройства умного дома
+    private static final String SERVER_URL = "http://localhost:9998";
 
     public static void main(String[] args) {
         // Пример получения данных из сети
@@ -17,7 +20,17 @@ public class Main {
         System.out.println("Received data: " + data);*/
 
         // Пример отправки данных в сеть
-        sendDataToNetwork("DbMG_38BBgaI0Kv6kzGK");
+        int addressHub = 0x1234; // 14-битный адрес
+        Payload payload = new Payload(850,16383,3, (byte) 1, (byte) 1, new Device("SmartHub", new byte[0]));
+        byte[] payloadBytes = Payload.encodePacketToByte(payload);
+        byte sumBytes = 0;
+        for (byte b : payloadBytes){
+            sumBytes += b;
+        }
+        Packet packet = new Packet(sumBytes, payload, CRC8.computeCRC8Simple(payloadBytes));
+        //sendDataToNetwork(packet.toString());
+        sendDataToNetwork(Packet.encodePacketToByte(packet));
+       // sendDataToNetwork("DbMG_38BBgaI0Kv6kzGK");
     }
 
     private static String getDataFromNetwork() {
@@ -27,10 +40,10 @@ public class Main {
             connection.setRequestMethod("GET");
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            StringBuilder response = new StringBuilder();
+            byte[] response = new byte[0];
             String line;
             while ((line = reader.readLine()) != null) {
-                response.append(line);
+                response = Base64.getDecoder().decode(line);
             }
             reader.close();
 
@@ -42,14 +55,14 @@ public class Main {
         return null;
     }
 
-    private static void sendDataToNetwork(String data) {
+    private static void sendDataToNetwork(byte[] data) {
         try {
             URL url = new URL(SERVER_URL);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("POST");
             connection.setDoOutput(true);
-
-            connection.getOutputStream().write(Base64.getEncoder().encode(data.getBytes(StandardCharsets.UTF_8)));
+            String binary = Base64.getEncoder().encodeToString(data);
+            connection.getOutputStream().write(binary.getBytes());
             int responseCode = connection.getResponseCode();
             System.out.println("Response code: " + responseCode);
 
@@ -57,5 +70,14 @@ public class Main {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private static String arrayBytesToBinaryCode(byte[] bytes){
+        StringBuilder stringBuilder = new StringBuilder();
+        for (byte b : bytes) {
+            String binStr = Integer.toBinaryString(b & 0xFF);
+            stringBuilder.append(("00000000" + binStr + " ").substring(binStr.length())).append(" ");
+        }
+        return stringBuilder.toString();
     }
 }
